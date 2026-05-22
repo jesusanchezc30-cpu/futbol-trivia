@@ -180,6 +180,175 @@ def generar_pistas_jugador():
         "dificultad": 2
     }
 
+def generar_pregunta_maximo_goleador():
+    """¿Quién fue el máximo goleador de X equipo en X temporada?"""
+    conn = conectar_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT e.jugador_nombre, COUNT(*) as goles, eq.nombre as equipo, p.temporada
+        FROM eventos_partido e
+        JOIN partidos p ON e.partido_id = p.id
+        JOIN equipos eq ON eq.nombre = e.equipo_nombre
+        WHERE e.tipo = 'gol'
+        AND e.jugador_nombre IS NOT NULL
+        AND p.temporada IS NOT NULL
+        GROUP BY e.jugador_nombre, eq.nombre, p.temporada
+        HAVING COUNT(*) >= 5
+        ORDER BY RANDOM() LIMIT 1
+    """)
+    resultado = cursor.fetchone()
+    if not resultado:
+        return None
+
+    jugador, goles, equipo, temporada = resultado
+
+    cursor.execute("""
+        SELECT e.jugador_nombre
+        FROM eventos_partido e
+        JOIN partidos p ON e.partido_id = p.id
+        WHERE e.tipo = 'gol'
+        AND e.equipo_nombre = %s
+        AND p.temporada = %s
+        AND e.jugador_nombre != %s
+        GROUP BY e.jugador_nombre
+        ORDER BY RANDOM() LIMIT 3
+    """, (equipo, temporada, jugador))
+    incorrectos = [row[0] for row in cursor.fetchall()]
+
+    cursor.close()
+    conn.close()
+
+    if len(incorrectos) < 3:
+        return None
+
+    anio_inicio = int(temporada)
+    anio_fin = anio_inicio + 1
+    nombre_temporada = f"{str(anio_inicio)[2:]}/{str(anio_fin)[2:]}"
+
+    opciones = incorrectos + [jugador]
+    random.shuffle(opciones)
+
+    return {
+        "tipo": "trivia",
+        "enunciado": f"¿Quién marcó más goles en el {equipo} en la temporada {nombre_temporada}? ({goles} goles)",
+        "respuesta_correcta": jugador,
+        "opciones": json.dumps(opciones),
+        "dificultad": 2
+    }
+
+def generar_pregunta_mas_tarjetas():
+    """¿Qué equipo tuvo más tarjetas rojas en X temporada?"""
+    conn = conectar_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT p.temporada
+        FROM partidos p
+        WHERE p.temporada IS NOT NULL
+        GROUP BY p.temporada
+        ORDER BY RANDOM() LIMIT 1
+    """)
+    resultado = cursor.fetchone()
+    if not resultado:
+        return None
+
+    temporada = resultado[0]
+
+    cursor.execute("""
+        SELECT e.equipo_nombre, COUNT(*) as rojas
+        FROM eventos_partido e
+        JOIN partidos p ON e.partido_id = p.id
+        WHERE e.tipo = 'tarjeta_roja'
+        AND p.temporada = %s
+        AND e.equipo_nombre IS NOT NULL
+        GROUP BY e.equipo_nombre
+        ORDER BY rojas DESC
+        LIMIT 4
+    """, (temporada,))
+    equipos = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    if len(equipos) < 4:
+        return None
+
+    equipo_correcto = equipos[0][0]
+    rojas_correctas = equipos[0][1]
+    incorrectos = [e[0] for e in equipos[1:]]
+
+    anio_inicio = int(temporada)
+    anio_fin = anio_inicio + 1
+    nombre_temporada = f"{str(anio_inicio)[2:]}/{str(anio_fin)[2:]}"
+
+    opciones = incorrectos + [equipo_correcto]
+    random.shuffle(opciones)
+
+    return {
+        "tipo": "trivia",
+        "enunciado": f"¿Qué equipo recibió más tarjetas rojas en la temporada {nombre_temporada}? ({rojas_correctas} rojas)",
+        "respuesta_correcta": equipo_correcto,
+        "opciones": json.dumps(opciones),
+        "dificultad": 2
+    }
+
+def generar_pregunta_goles_temporada():
+    """¿Cuántos goles marcó X equipo en X temporada?"""
+    conn = conectar_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT eq.nombre, p.temporada,
+            SUM(CASE WHEN p.equipo_local_id = eq.id THEN p.goles_local
+                     ELSE p.goles_visitante END) as goles
+        FROM partidos p
+        JOIN equipos eq ON eq.id = p.equipo_local_id OR eq.id = p.equipo_visitante_id
+        WHERE p.temporada IS NOT NULL
+        GROUP BY eq.nombre, p.temporada
+        HAVING COUNT(*) >= 30
+        ORDER BY RANDOM() LIMIT 1
+    """)
+    resultado = cursor.fetchone()
+    if not resultado:
+        return None
+
+    equipo, temporada, goles_correctos = resultado
+
+    cursor.execute("""
+        SELECT eq.nombre,
+            SUM(CASE WHEN p.equipo_local_id = eq.id THEN p.goles_local
+                     ELSE p.goles_visitante END) as goles
+        FROM partidos p
+        JOIN equipos eq ON eq.id = p.equipo_local_id OR eq.id = p.equipo_visitante_id
+        WHERE p.temporada = %s AND eq.nombre != %s
+        GROUP BY eq.nombre
+        HAVING COUNT(*) >= 30
+        ORDER BY RANDOM() LIMIT 3
+    """, (temporada, equipo))
+    incorrectos = [str(row[1]) for row in cursor.fetchall()]
+
+    cursor.close()
+    conn.close()
+
+    if len(incorrectos) < 3:
+        return None
+
+    anio_inicio = int(temporada)
+    anio_fin = anio_inicio + 1
+    nombre_temporada = f"{str(anio_inicio)[2:]}/{str(anio_fin)[2:]}"
+
+    opciones = incorrectos + [str(goles_correctos)]
+    random.shuffle(opciones)
+
+    return {
+        "tipo": "trivia",
+        "enunciado": f"¿Cuántos goles marcó el {equipo} en la temporada {nombre_temporada}?",
+        "respuesta_correcta": str(goles_correctos),
+        "opciones": json.dumps(opciones),
+        "dificultad": 3
+    }
+
 def insertar_pregunta(pregunta):
     conn = conectar_db()
     cursor = conn.cursor()
@@ -203,7 +372,10 @@ def generar_banco_preguntas(n=50):
         generar_pregunta_nacionalidad,
         generar_pregunta_equipo,
         generar_pregunta_valor_mercado,
-        generar_pistas_jugador
+        generar_pistas_jugador,
+        generar_pregunta_maximo_goleador,
+        generar_pregunta_mas_tarjetas,
+        generar_pregunta_goles_temporada
     ]
 
     generadas = 0
