@@ -21,6 +21,7 @@ NOMBRES_EQUIPOS = {
     "Atlético de Madrid": "Atletico Madrid",
     "RC Celta de Vigo": "Celta Vigo",
     "RCD Espanyol": "Espanyol",
+    "RCD Espanyol de Barcelona": "Espanyol",
     "Getafe CF": "Getafe",
     "Girona FC": "Girona",
     "UD Las Palmas": "Las Palmas",
@@ -36,6 +37,47 @@ NOMBRES_EQUIPOS = {
     "Real Valladolid CF": "Valladolid",
     "Villarreal CF": "Villarreal",
     "Deportivo Alavés": "Alaves",
+    "Sporting de Gijón": "Sporting Gijon",
+    "Real Sporting de Gijón": "Sporting Gijon",
+    "Granada CF": "Granada CF",
+    "SD Eibar": "Eibar",
+    "Málaga CF": "Malaga",
+    "UD Almería": "Almeria",
+    "Levante UD": "Levante",
+    "Cádiz CF": "Cadiz",
+    "Elche CF": "Elche",
+    "RC Deportivo de La Coruña": "Deportivo La Coruna",
+    "Real Club Deportivo de La Coruña": "Deportivo La Coruna",
+    "Real Racing Club": "Racing Santander",
+    "SD Huesca": "Huesca",
+    "Real Zaragoza": "Zaragoza",
+    "Córdoba CF": "Cordoba",
+    "Hércules CF": "Hercules",
+    "Real Murcia CF": "Murcia",
+    "Xerez CD": "Xerez",
+    "Recreativo de Huelva": "Recreativo",
+    "CD Numancia": "Numancia",
+    "CE Sabadell FC": "Sabadell",
+    "SD Ponferradina": "Ponferradina",
+    "Real Oviedo": "Oviedo",
+    "CD Tenerife": "Tenerife",
+    "Albacete BP": "Albacete",
+    "Burgos CF": "Burgos",
+    "Racing Club Ferrol": "Racing Ferrol",
+    "UD Eldense": "Eldense",
+    "FC Cartagena": "FC Cartagena",
+    "CD Mirandés": "Mirandes",
+    "Rayo Vallecano de Madrid": "Rayo Vallecano",
+    "UD Logroñés": "Logrono",
+    "CD Castellón": "Castellón",
+    "UD Logroñés": "Logrono",
+    "CD Lugo": "Lugo",
+    "AD Alcorcón": "Alcorcon",
+    "Gimnàstic de Tarragona": "Nastic",
+    "CF Fuenlabrada": "Fuenlabrada",
+    "SD Amorebieta": "Amorebieta",
+    "Cultural Leonesa": "Cultural Leonesa",
+    "CD Badajoz": "Badajoz",
 }
 
 def conectar_db():
@@ -135,6 +177,7 @@ def get_partidos_jornada(jornada, temporada="2024"):
                 "goles_local": goles_local,
                 "goles_visitante": goles_visitante,
                 "jornada": jornada,
+                "temporada": temporada,
                 "url": url_partido,
                 "eventos": eventos
             })
@@ -145,28 +188,38 @@ def get_partidos_jornada(jornada, temporada="2024"):
     print(f"  Jornada {jornada}: {len(partidos)} partidos encontrados")
     return partidos
 
+def obtener_o_crear_equipo(cursor, nombre):
+    cursor.execute("SELECT id FROM equipos WHERE nombre ILIKE %s", (nombre,))
+    resultado = cursor.fetchone()
+    if resultado:
+        return resultado[0]
+
+    cursor.execute("""
+        INSERT INTO equipos (nombre, liga, categoria)
+        VALUES (%s, 'LaLiga', 'Primera División')
+        RETURNING id
+    """, (nombre,))
+    nuevo = cursor.fetchone()
+    print(f"  ✓ Equipo nuevo creado: {nombre}")
+    return nuevo[0]
+
 def insertar_partido(cursor, partido):
     nombre_local = NOMBRES_EQUIPOS.get(partido["equipo_local"], partido["equipo_local"])
     nombre_visitante = NOMBRES_EQUIPOS.get(partido["equipo_visitante"], partido["equipo_visitante"])
 
-    cursor.execute("SELECT id FROM equipos WHERE nombre ILIKE %s", (nombre_local,))
-    local = cursor.fetchone()
-    cursor.execute("SELECT id FROM equipos WHERE nombre ILIKE %s", (nombre_visitante,))
-    visitante = cursor.fetchone()
-
-    if not local or not visitante:
-        print(f"  ✗ No encontrado: {nombre_local} vs {nombre_visitante}")
-        return None
+    local_id = obtener_o_crear_equipo(cursor, nombre_local)
+    visitante_id = obtener_o_crear_equipo(cursor, nombre_visitante)
 
     cursor.execute("""
-        INSERT INTO partidos (equipo_local_id, equipo_visitante_id, goles_local, goles_visitante, jornada, competicion)
-        VALUES (%s, %s, %s, %s, %s, %s)
+        INSERT INTO partidos (equipo_local_id, equipo_visitante_id, goles_local, goles_visitante, jornada, competicion, temporada)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT DO NOTHING
         RETURNING id
     """, (
-        local[0], visitante[0],
+        local_id, visitante_id,
         partido["goles_local"], partido["goles_visitante"],
-        partido["jornada"], "LaLiga"
+        partido["jornada"], "LaLiga",
+        partido["temporada"]
     ))
     resultado = cursor.fetchone()
     return resultado[0] if resultado else None
@@ -175,7 +228,7 @@ def cargar_temporada(temporada="2024", jornadas=38):
     conn = conectar_db()
     cursor = conn.cursor()
 
-    print(f"Cargando temporada {temporada}/{int(temporada)+1}...\n")
+    print(f"\nCargando temporada {temporada}/{int(temporada)+1}...\n")
 
     for jornada in range(1, jornadas + 1):
         partidos = get_partidos_jornada(jornada, temporada)
@@ -198,7 +251,8 @@ def cargar_temporada(temporada="2024", jornadas=38):
 
     cursor.close()
     conn.close()
-    print("\nTemporada cargada correctamente.")
+    print(f"Temporada {temporada} cargada correctamente.")
 
 if __name__ == "__main__":
-    cargar_temporada("2024", 38)
+    for temporada in ["2024", "2023", "2022", "2021", "2020", "2019", "2018", "2017", "2016", "2015", "2014", "2013", "2012"]:
+        cargar_temporada(temporada, 38)
