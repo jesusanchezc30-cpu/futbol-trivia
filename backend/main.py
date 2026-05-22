@@ -8,6 +8,15 @@ load_dotenv("../etl/.env")
 
 app = FastAPI(title="Futbol Trivia API")
 
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 def conectar_db():
     return psycopg2.connect(
         host=os.getenv("DB_HOST"),
