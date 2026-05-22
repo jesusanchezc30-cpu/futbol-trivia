@@ -1,0 +1,2 @@
+ALTER TABLE jugadores ADD COLUMN IF NOT EXISTS valor_mercado VARCHAR(50);
+ALTER TABLE jugadores ADD COLUMN IF NOT EXISTS url_perfil TEXT;
