@@ -16,11 +16,9 @@ def conectar_db():
     )
 
 def generar_pregunta_nacionalidad():
-    """¿De qué nacionalidad es X jugador?"""
     conn = conectar_db()
     cursor = conn.cursor()
 
-    # Jugador correcto
     cursor.execute("""
         SELECT j.nombre, j.nacionalidad FROM jugadores j
         WHERE j.nacionalidad IS NOT NULL
@@ -32,10 +30,10 @@ def generar_pregunta_nacionalidad():
 
     nombre, nacionalidad_correcta = jugador
 
-    # 3 nacionalidades incorrectas
     cursor.execute("""
-        SELECT DISTINCT nacionalidad FROM jugadores
+        SELECT nacionalidad FROM jugadores
         WHERE nacionalidad != %s AND nacionalidad IS NOT NULL
+        GROUP BY nacionalidad
         ORDER BY RANDOM() LIMIT 3
     """, (nacionalidad_correcta,))
     incorrectas = [row[0] for row in cursor.fetchall()]
@@ -58,11 +56,9 @@ def generar_pregunta_nacionalidad():
     }
 
 def generar_pregunta_equipo():
-    """¿En qué equipo juega X jugador?"""
     conn = conectar_db()
     cursor = conn.cursor()
 
-    # Jugador correcto
     cursor.execute("""
         SELECT j.nombre, e.nombre FROM jugadores j
         JOIN equipos e ON j.equipo_id = e.id
@@ -74,7 +70,6 @@ def generar_pregunta_equipo():
 
     jugador_nombre, equipo_correcto = resultado
 
-    # 3 equipos incorrectos
     cursor.execute("""
         SELECT nombre FROM equipos
         WHERE nombre != %s
@@ -99,8 +94,48 @@ def generar_pregunta_equipo():
         "dificultad": 1
     }
 
+def generar_pregunta_valor_mercado():
+    conn = conectar_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT j.nombre, j.valor_mercado, e.nombre FROM jugadores j
+        JOIN equipos e ON j.equipo_id = e.id
+        WHERE j.valor_mercado IS NOT NULL
+        ORDER BY RANDOM() LIMIT 1
+    """)
+    resultado = cursor.fetchone()
+    if not resultado:
+        return None
+
+    jugador_nombre, valor_correcto, equipo = resultado
+
+    cursor.execute("""
+        SELECT valor_mercado FROM jugadores
+        WHERE valor_mercado != %s AND valor_mercado IS NOT NULL
+        GROUP BY valor_mercado
+        ORDER BY RANDOM() LIMIT 3
+    """, (valor_correcto,))
+    incorrectos = [row[0] for row in cursor.fetchall()]
+
+    cursor.close()
+    conn.close()
+
+    if len(incorrectos) < 3:
+        return None
+
+    opciones = incorrectos + [valor_correcto]
+    random.shuffle(opciones)
+
+    return {
+        "tipo": "trivia",
+        "enunciado": f"¿Cuál es el valor de mercado de {jugador_nombre} ({equipo})?",
+        "respuesta_correcta": valor_correcto,
+        "opciones": json.dumps(opciones),
+        "dificultad": 2
+    }
+
 def generar_pistas_jugador():
-    """Genera preguntas de adivina el jugador con pistas progresivas"""
     conn = conectar_db()
     cursor = conn.cursor()
 
@@ -164,10 +199,10 @@ def insertar_pregunta(pregunta):
     conn.close()
 
 def generar_banco_preguntas(n=50):
-    """Genera n preguntas y las guarda en la base de datos"""
     generadores = [
         generar_pregunta_nacionalidad,
         generar_pregunta_equipo,
+        generar_pregunta_valor_mercado,
         generar_pistas_jugador
     ]
 
