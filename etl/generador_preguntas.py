@@ -366,7 +366,7 @@ def generar_pregunta_comparacion_goleadores():
 
     return {
         "tipo": "trivia",
-        "enunciado": f"En la temporada {nombre_temporada}, ¿quién marcó más goles en LaLiga, {correcto} ({goles_correcto}) o {incorrecto} ({goles_incorrecto})?",
+        "enunciado": f"En la temporada {nombre_temporada}, ¿quién marcó más goles en LaLiga, {correcto} o {incorrecto}?",
         "respuesta_correcta": correcto,
         "opciones": json.dumps([correcto, incorrecto]),
         "dificultad": 2
